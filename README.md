@@ -6,13 +6,13 @@ This is a local `v0.1` vertical slice. It does not call an AI provider yet and i
 
 ## What works now
 
-- `POST /webhooks` accepts an `Idempotency-Key` and creates at most one workflow.
+- `POST /webhooks` accepts an `Idempotency-Key` and creates at most one workflow. A first delivery returns `201 Created`; a replay returns `200 OK` carrying the original workflow and `duplicate: true`, because a retry created nothing.
 - Safe events complete through deterministic rules.
 - High-risk events route to `human_review` and wait for a decision.
 - Ambiguous events route to `ai_assist` but do not call a model or trigger a side effect.
-- `approve` and `reject` decisions require a named reviewer.
+- `approve` and `reject` decisions require a named reviewer; deciding a workflow that is not `pending_approval` returns `409`.
 - Every creation, duplicate delivery, and decision is recorded in SQLite.
-- Six stdlib tests cover routing, idempotency, approval, and invalid transitions.
+- 20 tests: 6 stdlib tests pin the core ledger, and 14 contract tests pin the HTTP surface including the replay, `404`, `409`, and `422` responses.
 
 ## Run locally
 
@@ -38,6 +38,14 @@ curl -X POST http://127.0.0.1:8000/webhooks \
 ```powershell
 python -m unittest discover tests -v
 ```
+
+The core ledger is stdlib-only, so that command needs no install: the 6 core tests run and the 14 API contract tests report as skipped. Run the same command from the virtualenv to exercise the HTTP surface as well:
+
+```powershell
+.\.venv\Scripts\python -m unittest discover tests -v
+```
+
+Keeping the reliability core provider-free and dependency-free is deliberate — the guarantees stay testable offline, and the FastAPI and future AI adapters sit thinly around them.
 
 ## Next slices
 

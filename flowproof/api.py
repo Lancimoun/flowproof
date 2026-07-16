@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any, Literal
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from .core import InvalidTransition, WorkflowStore
@@ -37,12 +37,17 @@ def health() -> dict[str, str]:
 @app.post("/webhooks", status_code=201)
 def receive_webhook(
     request: WebhookRequest,
+    response: Response,
     idempotency_key: str = Header(alias="Idempotency-Key"),
 ) -> dict[str, Any]:
     try:
-        return store.ingest(idempotency_key, request.event_type, request.payload)
+        result = store.ingest(idempotency_key, request.event_type, request.payload)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    if result["duplicate"]:
+        # A replay created nothing, so 201 Created would misreport the outcome.
+        response.status_code = 200
+    return result
 
 
 @app.get("/workflows/{workflow_id}")
