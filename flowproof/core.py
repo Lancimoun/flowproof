@@ -22,7 +22,12 @@ def _now() -> str:
 class WorkflowStore:
     """SQLite-backed workflow ledger with deterministic routing rules."""
 
-    def __init__(self, database: str | Path = "flowproof.db") -> None:
+    def __init__(
+        self, database: str | Path = "flowproof.db", max_attempts: int = 3
+    ) -> None:
+        if max_attempts < 1:
+            raise ValueError("max_attempts must be at least 1")
+        self._max_attempts = max_attempts
         self._connection = sqlite3.connect(str(database), check_same_thread=False)
         self._connection.row_factory = sqlite3.Row
         self._lock = threading.RLock()
@@ -42,6 +47,8 @@ class WorkflowStore:
                     payload_json TEXT NOT NULL,
                     route TEXT NOT NULL,
                     status TEXT NOT NULL,
+                    attempt_count INTEGER NOT NULL DEFAULT 0,
+                    max_attempts INTEGER NOT NULL DEFAULT 3,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -55,6 +62,18 @@ class WorkflowStore:
                 );
                 """
             )
+            columns = {
+                row["name"]
+                for row in self._connection.execute("PRAGMA table_info(workflows)")
+            }
+            if "attempt_count" not in columns:
+                self._connection.execute(
+                    "ALTER TABLE workflows ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0"
+                )
+            if "max_attempts" not in columns:
+                self._connection.execute(
+                    "ALTER TABLE workflows ADD COLUMN max_attempts INTEGER NOT NULL DEFAULT 3"
+                )
 
     @staticmethod
     def _route(event_type: str, payload: dict[str, Any]) -> tuple[str, str, str]:
@@ -95,8 +114,8 @@ class WorkflowStore:
                 """
                 INSERT INTO workflows
                     (id, idempotency_key, event_type, payload_json, route, status,
-                     created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                     attempt_count, max_attempts, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     workflow_id,
@@ -105,6 +124,8 @@ class WorkflowStore:
                     json.dumps(payload, sort_keys=True),
                     route,
                     status,
+                    0,
+                    self._max_attempts,
                     timestamp,
                     timestamp,
                 ),
@@ -147,6 +168,59 @@ class WorkflowStore:
             )
             return self.get(workflow_id)
 
+    def record_failure(self, workflow_id: str, error: str) -> dict[str, Any]:
+        """Record an execution failure and stop retrying at the stored limit."""
+        reason = error.strip()
+        if not reason:
+            raise ValueError("error is required")
+
+        with self._lock, self._connection:
+            row = self._connection.execute(
+                """
+                SELECT status, attempt_count, max_attempts
+                FROM workflows WHERE id = ?
+                """,
+                (workflow_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(workflow_id)
+            if row["status"] not in {"approved", "retry_pending"}:
+                raise InvalidTransition(
+                    f"workflow is {row['status']}; only approved or retry_pending can fail"
+                )
+
+            attempt_count = row["attempt_count"] + 1
+            status = (
+                "dead_letter"
+                if attempt_count >= row["max_attempts"]
+                else "retry_pending"
+            )
+            self._connection.execute(
+                """
+                UPDATE workflows
+                SET status = ?, attempt_count = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (status, attempt_count, _now(), workflow_id),
+            )
+            self._append_audit(
+                workflow_id,
+                "attempt_failed",
+                {
+                    "attempt": attempt_count,
+                    "max_attempts": row["max_attempts"],
+                    "error": reason,
+                    "next_status": status,
+                },
+            )
+            if status == "dead_letter":
+                self._append_audit(
+                    workflow_id,
+                    "workflow_dead_lettered",
+                    {"attempts": attempt_count, "last_error": reason},
+                )
+            return self.get(workflow_id)
+
     def get(self, workflow_id: str) -> dict[str, Any]:
         row = self._connection.execute(
             "SELECT * FROM workflows WHERE id = ?", (workflow_id,)
@@ -167,6 +241,8 @@ class WorkflowStore:
             "payload": json.loads(row["payload_json"]),
             "route": row["route"],
             "status": row["status"],
+            "attempt_count": row["attempt_count"],
+            "max_attempts": row["max_attempts"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
             "audit": [

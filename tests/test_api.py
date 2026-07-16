@@ -178,5 +178,66 @@ class DecisionContractTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
 
 
+@unittest.skipIf(client is None, "fastapi/httpx not installed")
+class RetryContractTests(unittest.TestCase):
+    def _approved_workflow_id(self, key: str) -> str:
+        workflow_id = client.post(
+            "/webhooks",
+            headers={"Idempotency-Key": key},
+            json={"event_type": "email.received", "payload": {"needs_interpretation": True}},
+        ).json()["id"]
+        return client.post(
+            f"/workflows/{workflow_id}/decision",
+            json={"decision": "approve", "reviewer": "Lance"},
+        ).json()["id"]
+
+    def test_failures_retry_then_dead_letter_at_the_bounded_limit(self) -> None:
+        workflow_id = self._approved_workflow_id("api-retry-limit")
+
+        for attempt in range(1, 4):
+            response = client.post(
+                f"/workflows/{workflow_id}/failure",
+                json={"error": f"provider failure {attempt}"},
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["attempt_count"], attempt)
+
+        self.assertEqual(response.json()["status"], "dead_letter")
+        self.assertEqual(response.json()["audit"][-1]["action"], "workflow_dead_lettered")
+
+    def test_failure_before_approval_returns_409(self) -> None:
+        workflow_id = client.post(
+            "/webhooks",
+            headers={"Idempotency-Key": "api-retry-before-approval"},
+            json={"event_type": "payment.requested", "payload": {"amount": 2500}},
+        ).json()["id"]
+        response = client.post(
+            f"/workflows/{workflow_id}/failure", json={"error": "must not run"}
+        )
+        self.assertEqual(response.status_code, 409)
+
+    def test_blank_failure_reason_is_rejected(self) -> None:
+        workflow_id = self._approved_workflow_id("api-retry-blank-error")
+        response = client.post(
+            f"/workflows/{workflow_id}/failure", json={"error": ""}
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_whitespace_failure_reason_is_rejected(self) -> None:
+        workflow_id = self._approved_workflow_id("api-retry-space-error")
+        response = client.post(
+            f"/workflows/{workflow_id}/failure", json={"error": "   "}
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["detail"], "error is required")
+
+    def test_failure_on_unknown_workflow_returns_404(self) -> None:
+        response = client.post(
+            "/workflows/does-not-exist/failure", json={"error": "provider timeout"}
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["detail"], "workflow not found")
+
+
 if __name__ == "__main__":
     unittest.main()

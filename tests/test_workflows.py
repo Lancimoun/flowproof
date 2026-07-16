@@ -58,6 +58,44 @@ class WorkflowStoreTests(unittest.TestCase):
         with self.assertRaises(InvalidTransition):
             self.store.decide(completed["id"], "reject", "Lance")
 
+    def test_approved_workflow_failure_schedules_bounded_retry(self) -> None:
+        pending = self.store.ingest(
+            "evt-retry", "payment.requested", {"requires_approval": True}
+        )
+        approved = self.store.decide(pending["id"], "approve", "Lance")
+
+        failed = self.store.record_failure(approved["id"], "provider timeout")
+
+        self.assertEqual(failed["status"], "retry_pending")
+        self.assertEqual(failed["attempt_count"], 1)
+        self.assertEqual(failed["max_attempts"], 3)
+        self.assertEqual(failed["audit"][-1]["action"], "attempt_failed")
+        self.assertEqual(failed["audit"][-1]["detail"]["error"], "provider timeout")
+
+    def test_retry_budget_exhaustion_dead_letters_workflow(self) -> None:
+        pending = self.store.ingest(
+            "evt-dead", "email.received", {"needs_interpretation": True}
+        )
+        workflow = self.store.decide(pending["id"], "approve", "Lance")
+
+        for attempt in range(1, 4):
+            workflow = self.store.record_failure(
+                workflow["id"], f"failure {attempt}"
+            )
+
+        self.assertEqual(workflow["status"], "dead_letter")
+        self.assertEqual(workflow["attempt_count"], 3)
+        self.assertEqual(workflow["audit"][-1]["action"], "workflow_dead_lettered")
+        with self.assertRaises(InvalidTransition):
+            self.store.record_failure(workflow["id"], "failure 4")
+
+    def test_pending_approval_cannot_record_execution_failure(self) -> None:
+        pending = self.store.ingest(
+            "evt-not-approved", "payment.requested", {"amount": 2500}
+        )
+        with self.assertRaises(InvalidTransition):
+            self.store.record_failure(pending["id"], "must not execute")
+
 
 if __name__ == "__main__":
     unittest.main()

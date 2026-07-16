@@ -21,6 +21,10 @@ class DecisionRequest(BaseModel):
     reviewer: str = Field(min_length=1, max_length=100)
 
 
+class FailureRequest(BaseModel):
+    error: str = Field(min_length=1, max_length=500)
+
+
 store = WorkflowStore(os.getenv("FLOWPROOF_DATABASE", "flowproof.db"))
 app = FastAPI(
     title="FlowProof",
@@ -66,3 +70,17 @@ def decide_workflow(workflow_id: str, request: DecisionRequest) -> dict[str, Any
         raise HTTPException(status_code=404, detail="workflow not found") from error
     except InvalidTransition as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@app.post("/workflows/{workflow_id}/failure")
+def record_workflow_failure(
+    workflow_id: str, request: FailureRequest
+) -> dict[str, Any]:
+    try:
+        return store.record_failure(workflow_id, request.error)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="workflow not found") from error
+    except InvalidTransition as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
