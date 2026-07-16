@@ -1,5 +1,8 @@
 # FlowProof
 
+[![CI](https://github.com/Lancimoun/flowproof/actions/workflows/ci.yml/badge.svg)](https://github.com/Lancimoun/flowproof/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 **A reliability workbench for AI-assisted automations.** FlowProof makes the operational guarantees around an automation visible: duplicate protection, deterministic routing, human approval, bounded retries, dead letters, and an append-only audit history.
 
 This is a local `v0.1` vertical slice. It does not call an AI provider yet and it is not deployed. Ambiguous work is routed to an `ai_assist` queue behind human approval, so a future model adapter can be added without weakening the safety boundary.

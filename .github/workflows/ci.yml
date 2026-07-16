@@ -1,0 +1,44 @@
+name: FlowProof CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  core-runs-with-nothing-installed:
+    # The README promises the reliability core is provider-free: `python -m
+    # unittest discover tests` runs with no install, no credentials, no AI
+    # provider. This job is that promise, enforced. Nothing is installed here
+    # on purpose -- if someone imports fastapi/httpx into the core, these tests
+    # stop importing and this job goes red. That is the point of the job.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Core ledger tests on a bare interpreter
+        # Named explicitly rather than via discover: discover would report
+        # success if every test silently started skipping, which is exactly the
+        # regression this job exists to catch.
+        run: python -m unittest tests.test_workflows -v
+
+      - name: Full discover -- HTTP contracts must SKIP, not fail
+        run: python -m unittest discover tests -v
+
+  full-suite:
+    # The same 28 tests with dependencies present: 9 core + 19 live HTTP
+    # contract tests against the FastAPI adapter.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Core + HTTP contract suite
+        run: python -m unittest discover tests -v
