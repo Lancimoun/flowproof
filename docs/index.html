@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FlowProof — reliability workbench (static demo)</title>
+<meta name="description" content="Static, canned illustration of FlowProof v0.1: idempotent intake, deterministic routing, human approval, bounded retries, dead letters, and an append-only audit ledger. No backend runs." />
+<style>
+  /* ============================================================
+     Design tokens — the ONLY place raw hex/color literals live.
+     Roles: bg / surface / text / text-muted / border / accent /
+     danger / warn (+ success and a few surface/shadow helpers).
+     ============================================================ */
+  :root {
+    /* color roles (light) */
+    --bg:            #eef1f5;
+    --surface:       #ffffff;
+    --surface-2:     #f4f6f9;
+    --surface-3:     #e9edf3;
+    --text:          #16191d;
+    --text-muted:    #5a6472;
+    --border:        #d5dbe3;
+    --border-strong: #b9c2ce;
+    --accent:        #2158d0;
+    --accent-soft:   #e3ecfd;
+    --accent-contrast:#ffffff;
+    --danger:        #c22947;
+    --danger-soft:   #fbe4e8;
+    --warn:          #a65f10;
+    --warn-soft:     #fbeed6;
+    --success:       #1d7a45;
+    --success-soft:  #dbf1e3;
+
+    --shadow-1: 0 1px 2px rgba(16, 24, 40, .06), 0 2px 6px rgba(16, 24, 40, .07);
+    --shadow-2: 0 6px 18px rgba(16, 24, 40, .10);
+    --ring:     0 0 0 3px var(--accent-soft);
+
+    /* spacing — 8px scale only */
+    --s1: 4px; --s2: 8px; --s3: 16px; --s4: 24px; --s5: 32px; --s6: 48px; --s7: 64px;
+
+    /* type scale — 6 sizes */
+    --fs-1: .75rem;    /* 12 — micro labels */
+    --fs-2: .8125rem;  /* 13 — meta */
+    --fs-3: .9375rem;  /* 15 — body */
+    --fs-4: 1.125rem;  /* 18 — subhead */
+    --fs-5: 1.5rem;    /* 24 — section */
+    --fs-6: 2rem;      /* 32 — page title */
+
+    /* radii */
+    --r-sm: 6px; --r-md: 10px; --r-lg: 14px; --r-pill: 999px;
+
+    --mono: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:            #0e1116;
+      --surface:       #161a21;
+      --surface-2:     #1b212a;
+      --surface-3:     #222a35;
+      --text:          #e7eaef;
+      --text-muted:    #9aa5b4;
+      --border:        #2a323d;
+      --border-strong: #3a4552;
+      --accent:        #6f9bff;
+      --accent-soft:   #1d2a44;
+      --accent-contrast:#0a0e14;
+      --danger:        #f0708c;
+      --danger-soft:   #3a1c24;
+      --warn:          #e2b25c;
+      --warn-soft:     #362a15;
+      --success:       #56c987;
+      --success-soft:  #14301f;
+
+      --shadow-1: 0 1px 2px rgba(0, 0, 0, .35), 0 2px 8px rgba(0, 0, 0, .40);
+      --shadow-2: 0 8px 22px rgba(0, 0, 0, .5);
+      --ring:     0 0 0 3px var(--accent-soft);
+    }
+  }
+
+  /* ============================================================
+     Base
+     ============================================================ */
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: var(--fs-3);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, p, ol, ul { margin: 0; }
+  code, .mono { font-family: var(--mono); }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: var(--s5) var(--s4) var(--s7);
+  }
+  @media (max-width: 560px) {
+    .wrap { padding: var(--s4) var(--s3) var(--s6); }
+  }
+
+  /* ---------- header ---------- */
+  .masthead { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); margin-bottom: var(--s3); }
+  .brand { display: flex; align-items: center; gap: var(--s2); }
+  .logo {
+    width: 40px; height: 40px; border-radius: var(--r-md);
+    background: var(--accent); color: var(--accent-contrast);
+    display: grid; place-items: center; font-weight: 800; font-size: var(--fs-4);
+    box-shadow: var(--shadow-1); flex: none;
+  }
+  .brand h1 { font-size: var(--fs-6); letter-spacing: -.02em; line-height: 1.05; }
+  .brand .tag { font-size: var(--fs-2); color: var(--text-muted); }
+  .badge-ver {
+    margin-left: auto;
+    font-size: var(--fs-1); font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--text-muted);
+    border: 1px solid var(--border); border-radius: var(--r-pill);
+    padding: var(--s1) var(--s3); background: var(--surface);
+  }
+  @media (max-width: 560px) { .badge-ver { margin-left: 0; } }
+
+  /* ---------- honest-framing note ---------- */
+  .note {
+    display: flex; gap: var(--s3); align-items: flex-start;
+    background: var(--warn-soft);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--warn);
+    border-radius: var(--r-md);
+    padding: var(--s3) var(--s4);
+    margin-bottom: var(--s5);
+    font-size: var(--fs-2);
+    color: var(--text);
+  }
+  .note .glyph { color: var(--warn); font-weight: 800; flex: none; }
+  .note strong { color: var(--text); }
+
+  /* ---------- layout grid ---------- */
+  .layout {
+    display: grid; gap: var(--s4);
+    grid-template-columns: 1fr;
+  }
+  @media (min-width: 900px) {
+    .layout {
+      grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+      grid-template-areas:
+        "controls idem"
+        "diagram  ledger"
+        "legend   ledger";
+      align-items: start;
+    }
+    #card-controls { grid-area: controls; }
+    #card-diagram  { grid-area: diagram; }
+    #card-legend   { grid-area: legend; }
+    #card-idem     { grid-area: idem; }
+    #card-ledger   { grid-area: ledger; }
+  }
+
+  /* ---------- cards ---------- */
+  .card {
+    min-width: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-1);
+    padding: var(--s4);
+  }
+  .card h2 {
+    font-size: var(--fs-4); letter-spacing: -.01em;
+    display: flex; align-items: baseline; gap: var(--s2);
+    margin-bottom: var(--s2);
+  }
+  .card .hint { font-size: var(--fs-2); color: var(--text-muted); margin-bottom: var(--s3); }
+  .card h2 .num {
+    font-size: var(--fs-1); font-weight: 700; color: var(--accent);
+    background: var(--accent-soft); border-radius: var(--r-sm);
+    padding: 2px var(--s2); flex: none;
+  }
+
+  /* ---------- controls ---------- */
+  fieldset { border: 0; margin: 0; padding: 0; }
+  legend { font-size: var(--fs-2); font-weight: 700; color: var(--text-muted); padding: 0; margin-bottom: var(--s2); }
+  .segmented { display: grid; gap: var(--s2); grid-template-columns: 1fr 1fr; }
+  .seg {
+    position: relative;
+    border: 1px solid var(--border); border-radius: var(--r-md);
+    padding: var(--s2) var(--s3);
+    cursor: pointer; background: var(--surface-2);
+    display: flex; flex-direction: column; gap: 2px;
+    transition: border-color .15s, background .15s, box-shadow .15s;
+  }
+  .seg:hover { border-color: var(--border-strong); }
+  .seg input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+  .seg .seg-t { font-size: var(--fs-2); font-weight: 700; }
+  .seg .seg-d { font-size: var(--fs-1); color: var(--text-muted); }
+  .seg:has(input:focus-visible) { box-shadow: var(--ring); border-color: var(--accent); }
+  .seg:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); }
+  .seg:has(input:checked) .seg-t { color: var(--accent); }
+
+  .seed {
+    margin-top: var(--s3);
+    font-family: var(--mono); font-size: var(--fs-2);
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: var(--r-md); padding: var(--s3);
+    color: var(--text); overflow-x: auto;
+  }
+  .seed .k { color: var(--text-muted); }
+  .seed .route-hint { display: block; margin-top: var(--s2); color: var(--accent); font-family: var(--sans); }
+
+  .actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s4); }
+  .btn {
+    font: inherit; font-weight: 700; font-size: var(--fs-3);
+    border-radius: var(--r-md); padding: var(--s2) var(--s4);
+    border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text);
+    cursor: pointer; transition: transform .06s, box-shadow .15s, background .15s, border-color .15s;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn:active { transform: translateY(1px); }
+  .btn:focus-visible { outline: none; box-shadow: var(--ring); border-color: var(--accent); }
+  .btn[disabled] { opacity: .5; cursor: not-allowed; }
+  .btn--primary { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+  .btn--primary:hover { box-shadow: var(--shadow-2); }
+
+  /* ---------- state machine diagram ---------- */
+  .flow { list-style: none; padding: 0; display: flex; flex-direction: column; align-items: stretch; }
+  .node {
+    position: relative;
+    border: 1.5px solid var(--border-strong);
+    border-radius: var(--r-md);
+    background: var(--surface-2);
+    padding: var(--s3) var(--s3);
+    display: flex; flex-direction: column; gap: 2px;
+    transition: box-shadow .2s, border-color .2s, background .2s, transform .2s;
+  }
+  .node .node-title { font-weight: 700; font-size: var(--fs-3); display: flex; align-items: center; gap: var(--s2); }
+  .node .node-meta { font-size: var(--fs-1); color: var(--text-muted); }
+  .node .status-code {
+    font-family: var(--mono); font-size: var(--fs-1); color: var(--text-muted);
+    border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0 6px;
+  }
+  .node .dot {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--border-strong);
+    flex: none; transition: background .2s;
+  }
+  /* edges between spine nodes */
+  .edge {
+    display: flex; flex-direction: column; align-items: center;
+    padding: var(--s1) 0; color: var(--text-muted);
+  }
+  .edge .line { width: 2px; height: var(--s3); background: var(--border-strong); }
+  .edge .lbl {
+    font-size: var(--fs-1); background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r-pill); padding: 1px var(--s2); margin: 2px 0;
+  }
+  .edge .chevron { font-size: var(--fs-2); line-height: 1; color: var(--border-strong); }
+
+  /* branch (exit) nodes sit offset with a dashed connector */
+  .row--branch { display: grid; grid-template-columns: var(--s5) 1fr; align-items: center; margin: var(--s1) 0; }
+  .row--branch .connector {
+    border-left: 2px solid var(--border-strong);
+    border-bottom: 2px dashed var(--border-strong);
+    height: 26px; border-bottom-left-radius: 8px; margin-left: 10px;
+  }
+  .node--branch { border-style: dashed; background: var(--surface); }
+  .node--branch .branch-tag {
+    font-size: var(--fs-1); font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--text-muted);
+  }
+
+  /* node visual states */
+  .node.is-active {
+    border-color: var(--accent); background: var(--accent-soft);
+    box-shadow: var(--shadow-2), var(--ring); transform: translateY(-1px);
+  }
+  .node.is-active .dot { background: var(--accent); animation: pulse 1s ease-out infinite; }
+  .node.is-visited { border-color: var(--border-strong); }
+  .node.is-visited .dot { background: var(--accent); }
+  .node.term-good.is-visited { border-color: var(--success); background: var(--success-soft); }
+  .node.term-good.is-visited .dot { background: var(--success); }
+  .node.term-warn.is-visited { border-color: var(--warn); background: var(--warn-soft); }
+  .node.term-warn.is-visited .dot { background: var(--warn); }
+  .node.term-bad.is-visited  { border-color: var(--danger); background: var(--danger-soft); }
+  .node.term-bad.is-visited .dot { background: var(--danger); }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 var(--accent-soft); }
+    70%  { box-shadow: 0 0 0 8px rgba(0,0,0,0); }
+    100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .node, .btn { transition: none; }
+    .node.is-active .dot { animation: none; }
+  }
+
+  /* ---------- legend ---------- */
+  .legend-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2) var(--s3); }
+  .legend-item { display: flex; align-items: center; gap: var(--s2); font-size: var(--fs-2); }
+  .swatch { width: 14px; height: 14px; border-radius: 4px; border: 1.5px solid var(--border-strong); flex: none; }
+  .swatch.good { background: var(--success-soft); border-color: var(--success); }
+  .swatch.warn { background: var(--warn-soft); border-color: var(--warn); }
+  .swatch.bad  { background: var(--danger-soft); border-color: var(--danger); }
+  .swatch.active { background: var(--accent-soft); border-color: var(--accent); }
+
+  /* ---------- idempotency ---------- */
+  .resp-pair { display: grid; gap: var(--s3); grid-template-columns: 1fr 1fr; margin-top: var(--s3); }
+  @media (max-width: 480px) { .resp-pair { grid-template-columns: 1fr; } }
+  .resp {
+    border: 1px solid var(--border); border-radius: var(--r-md);
+    background: var(--surface-2); padding: var(--s3); min-height: 118px;
+    display: flex; flex-direction: column; gap: var(--s2);
+  }
+  .resp .resp-head { display: flex; align-items: center; gap: var(--s2); font-size: var(--fs-2); }
+  .http {
+    font-family: var(--mono); font-weight: 700; font-size: var(--fs-2);
+    border-radius: var(--r-sm); padding: 2px var(--s2);
+  }
+  .http.created { color: var(--success); background: var(--success-soft); }
+  .http.ok      { color: var(--warn);    background: var(--warn-soft); }
+  .http.idle    { color: var(--text-muted); background: var(--surface-3); }
+  .resp pre {
+    margin: 0; font-family: var(--mono); font-size: var(--fs-1); color: var(--text);
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .resp .muted { color: var(--text-muted); font-size: var(--fs-1); }
+  .resp .dup-true { color: var(--warn); font-weight: 700; }
+  .resp .dup-false { color: var(--success); font-weight: 700; }
+
+  /* ---------- ledger ---------- */
+  .ledger-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--r-md); }
+  table.ledger { width: 100%; border-collapse: collapse; font-size: var(--fs-2); min-width: 340px; }
+  table.ledger caption { text-align: left; padding: var(--s2) var(--s3); color: var(--text-muted); font-size: var(--fs-1); }
+  table.ledger th, table.ledger td { text-align: left; padding: var(--s2) var(--s3); vertical-align: top; }
+  table.ledger thead th {
+    position: sticky; top: 0; background: var(--surface-3); color: var(--text-muted);
+    font-size: var(--fs-1); text-transform: uppercase; letter-spacing: .04em; font-weight: 700;
+    border-bottom: 1px solid var(--border);
+  }
+  table.ledger tbody tr { border-top: 1px solid var(--border); }
+  table.ledger tbody tr:first-child { border-top: 0; }
+  .t-time { font-family: var(--mono); color: var(--text-muted); white-space: nowrap; }
+  .t-event code { font-weight: 700; color: var(--text); }
+  .t-detail { display: block; color: var(--text-muted); font-size: var(--fs-1); margin-top: 2px; }
+  .state-badge {
+    font-size: var(--fs-1); font-weight: 700; border-radius: var(--r-pill);
+    padding: 2px var(--s2); white-space: nowrap; border: 1px solid var(--border-strong);
+    background: var(--surface-3); color: var(--text-muted);
+  }
+  .state-badge.s-good { color: var(--success); background: var(--success-soft); border-color: var(--success); }
+  .state-badge.s-info { color: var(--accent);  background: var(--accent-soft);  border-color: var(--accent); }
+  .state-badge.s-warn { color: var(--warn);    background: var(--warn-soft);    border-color: var(--warn); }
+  .state-badge.s-bad  { color: var(--danger);  background: var(--danger-soft);  border-color: var(--danger); }
+  .ledger-empty { padding: var(--s5) var(--s3); text-align: center; color: var(--text-muted); font-size: var(--fs-2); }
+
+  @keyframes rowin { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  .rowin { animation: rowin .35s ease both; }
+  @media (prefers-reduced-motion: reduce) { .rowin { animation: none; } }
+
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+
+  footer { margin-top: var(--s6); font-size: var(--fs-2); color: var(--text-muted); text-align: center; }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">F</div>
+      <div>
+        <h1>FlowProof</h1>
+        <div class="tag">Reliability workbench for AI-assisted automations</div>
+      </div>
+    </div>
+    <span class="badge-ver">Static demo · v0.1</span>
+  </header>
+
+  <div class="note" role="note">
+    <span class="glyph" aria-hidden="true">&#9432;</span>
+    <span>
+      <strong>This is a static, canned illustration &mdash; not a live product.</strong>
+      FlowProof v0.1 is a local, provider-free vertical slice that is <strong>not deployed</strong>. No backend
+      is running behind this page; every response, timestamp, and ledger entry below is a scripted example of
+      how the real <code>WorkflowStore</code> and HTTP API behave. Nothing here calls an AI model.
+    </span>
+  </div>
+
+  <main class="layout">
+
+    <!-- ============ CONTROLS ============ -->
+    <section class="card" id="card-controls" aria-labelledby="h-controls">
+      <h2 id="h-controls"><span class="num">1</span>Drive a workflow</h2>
+      <p class="hint">Pick an inbound event, then press <strong>Run demo</strong> to watch one work item move through
+        the state machine while the audit ledger fills.</p>
+
+      <fieldset>
+        <legend>Scenario (inbound webhook)</legend>
+        <div class="segmented" role="radiogroup" aria-label="Scenario">
+          <label class="seg">
+            <input type="radio" name="scenario" value="B" checked />
+            <span class="seg-t">Risk &rarr; approve &rarr; dead letter</span>
+            <span class="seg-d">human_review, then 3 failed attempts</span>
+          </label>
+          <label class="seg">
+            <input type="radio" name="scenario" value="A" />
+            <span class="seg-t">Safe &rarr; completed</span>
+            <span class="seg-d">deterministic rules, no approval</span>
+          </label>
+          <label class="seg">
+            <input type="radio" name="scenario" value="C" />
+            <span class="seg-t">Risk &rarr; reject</span>
+            <span class="seg-d">reviewer declines</span>
+          </label>
+          <label class="seg">
+            <input type="radio" name="scenario" value="D" />
+            <span class="seg-t">Ambiguous &rarr; ai_assist</span>
+            <span class="seg-d">queued for review, no model call</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <div class="seed" id="seed" aria-live="polite">
+        <span class="k">POST</span> /webhooks
+        <span class="k">Idempotency-Key:</span> <span id="seed-key">payment-42</span><br />
+        { <span class="k">"event_type":</span> <span id="seed-evt">"payment.requested"</span>,
+          <span class="k">"payload":</span> <span id="seed-payload">{"amount": 2500}</span> }
+        <span class="route-hint" id="seed-route">&rarr; routes to human_review (amount &ge; 1000)</span>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn--primary" id="run">Run demo</button>
+        <button class="btn" id="reset">Reset</button>
+      </div>
+      <p class="sr-only" role="status" aria-live="polite" id="status"></p>
+    </section>
+
+    <!-- ============ STATE MACHINE ============ -->
+    <section class="card" id="card-diagram" aria-labelledby="h-diagram">
+      <h2 id="h-diagram"><span class="num">2</span>State machine</h2>
+      <p class="hint">Deterministic routing splits intake three ways. Only high-risk / ambiguous work waits for a
+        human; approved work that keeps failing is bounded and parked, never looped forever.</p>
+
+      <ol class="flow" aria-label="Workflow state machine">
+        <li class="row">
+          <div class="node" data-node="intake" id="n-intake">
+            <span class="node-title"><span class="dot" aria-hidden="true"></span>Webhook received</span>
+            <span class="node-meta">POST /webhooks &middot; idempotent intake</span>
+          </div>
+        </li>
+
+        <li class="edge" aria-hidden="true">
+          <span class="line"></span><span class="lbl">route &middot; deterministic</span><span class="chevron">&#9660;</span>
+        </li>
+
+        <li class="row row--branch">
+          <div class="connector" aria-hidden="true"></div>
+          <div class="node node--branch term-good" data-node="completed" id="n-completed">
+            <span class="node-title"><span class="dot" aria-hidden="true"></span>Completed
+              <span class="status-code">status 201</span></span>
+            <span class="branch-tag">branch &middot; route: rules</span>
+            <span class="node-meta">safe deterministic path &mdash; no approval needed</span>
+          </div>
+        </li>
+
+        <li class="row">
+          <div class="node" data-node="pending" id="n-pending">
+            <span class="node-title"><span class="dot" aria-hidden="true"></span>Pending approval</span>
+            <span class="node-meta">route: human_review or ai_assist &middot; waits for a named reviewer</span>
+          </div>
+        </li>
+
+        <li class="edge" aria-hidden="true">
+          <span class="line"></span><span class="lbl">reviewer decides</span><span class="chevron">&#9660;</span>
+        </li>
+
+        <li class="row row--branch">
+          <div class="connector" aria-hidden="true"></div>
+          <div class="node node--branch term-bad" data-node="rejected" id="n-rejected">
+            <span class="node-title"><span class="dot" aria-hidden="true"></span>Rejected</span>
+            <span class="branch-tag">branch &middot; reject</span>
+            <span class="node-meta">terminal &middot; deciding again returns 409</span>
+          </div>
+        </li>
+
+        <li class="row">
+          <div class="node term-good" data-node="approved" id="n-approved">
+            <span class="node-title"><span class="dot" aria-hidden="true"></span>Approved</span>
+            <span class="node-meta">approve &middot; cleared to execute</span>
+          </div>
+        </li>
+
+        <li class="edge" aria-hidden="true">
+          <span class="line"></span><span class="lbl">execute &middot; attempt fails</span><span class="chevron">&#9660;</span>
+        </li>
+
+        <li class="row">
+          <div class="node term-warn" data-node="retry" id="n-retry">
+            <span class="node-title"><span class="dot" aria-hidden="true"></span>Retry pending
+              <span class="status-code">attempt <b id="retryCount">&ndash;</b>/3</span></span>
+            <span class="node-meta">bounded &mdash; attempts 1 &amp; 2 reschedule</span>
+          </div>
+        </li>
+
+        <li class="edge" aria-hidden="true">
+          <span class="line"></span><span class="lbl">attempt 3 fails</span><span class="chevron">&#9660;</span>
+        </li>
+
+        <li class="row">
+          <div class="node term-bad" data-node="dead" id="n-dead">
+            <span class="node-title"><span class="dot" aria-hidden="true"></span>Dead letter</span>
+            <span class="node-meta">retry budget spent &middot; stops &amp; stays auditable</span>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ============ LEGEND ============ -->
+    <section class="card" id="card-legend" aria-labelledby="h-legend">
+      <h2 id="h-legend">Legend</h2>
+      <div class="legend-grid">
+        <span class="legend-item"><span class="swatch active"></span> Active now</span>
+        <span class="legend-item"><span class="swatch good"></span> Completed / approved</span>
+        <span class="legend-item"><span class="swatch warn"></span> Retry pending</span>
+        <span class="legend-item"><span class="swatch bad"></span> Rejected / dead letter</span>
+      </div>
+    </section>
+
+    <!-- ============ IDEMPOTENCY ============ -->
+    <section class="card" id="card-idem" aria-labelledby="h-idem">
+      <h2 id="h-idem"><span class="num">3</span>Idempotent intake</h2>
+      <p class="hint">The same <code>Idempotency-Key</code> creates <strong>at most one</strong> workflow. The first
+        delivery is <code>201 Created</code>; a replay is <code>200 OK</code> carrying the original workflow and
+        <code>duplicate: true</code>, because the retry created nothing.</p>
+
+      <div class="actions">
+        <button class="btn btn--primary" id="sendTwice">Send the same webhook twice</button>
+      </div>
+
+      <div class="resp-pair">
+        <div class="resp" id="resp1">
+          <div class="resp-head"><span class="http idle" id="http1">&mdash;</span><span>First delivery</span></div>
+          <pre id="body1" class="muted">Awaiting send&hellip;</pre>
+        </div>
+        <div class="resp" id="resp2">
+          <div class="resp-head"><span class="http idle" id="http2">&mdash;</span><span>Replay (same key)</span></div>
+          <pre id="body2" class="muted">Awaiting send&hellip;</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ LEDGER ============ -->
+    <section class="card" id="card-ledger" aria-labelledby="h-ledger">
+      <h2 id="h-ledger"><span class="num">4</span>Audit ledger</h2>
+      <p class="hint">Append-only history. Every creation, duplicate, decision, failed attempt, and dead letter is
+        recorded &mdash; in the real build, into SQLite.</p>
+      <div class="ledger-scroll">
+        <table class="ledger">
+          <caption>timestamp &middot; event &middot; resulting state</caption>
+          <thead>
+            <tr><th scope="col">Time (UTC)</th><th scope="col">Event</th><th scope="col">State</th></tr>
+          </thead>
+          <tbody id="ledgerBody">
+            <tr id="ledgerEmpty"><td colspan="3" class="ledger-empty">No events yet &mdash; run a scenario or send a duplicate webhook.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    FlowProof v0.1 &mdash; local, provider-free vertical slice. This page is a static illustration only; it opens
+    from a plain file with no server. MIT licensed &middot; built by Lance Jilliard Galicia.
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var $ = function (id) { return document.getElementById(id); };
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---- scenario definitions (faithful to flowproof/core.py) ----
+  // route rules: requires_approval OR risk_score>=0.7 OR amount>=1000 -> human_review/pending_approval
+  //              needs_interpretation -> ai_assist/pending_approval
+  //              else -> rules/completed
+  var scenarios = {
+    A: {
+      key: "invoice-8821", evt: '"invoice.paid"', payload: '{"amount": 25}',
+      route: "→ routes to rules (safe path, no approval)",
+      steps: [
+        { node: "intake" },
+        { node: "completed", ledger: { event: "workflow_created", detail: "route: rules · safe deterministic path", state: "completed", cls: "s-good" } }
+      ]
+    },
+    B: {
+      key: "payment-42", evt: '"payment.requested"', payload: '{"amount": 2500}',
+      route: "→ routes to human_review (amount ≥ 1000)",
+      steps: [
+        { node: "intake" },
+        { node: "pending",  ledger: { event: "workflow_created", detail: "route: human_review · risk threshold", state: "pending_approval", cls: "s-info" } },
+        { node: "approved", ledger: { event: "workflow_approved", detail: "reviewer: Lance", state: "approved", cls: "s-good" } },
+        { node: "retry", attempt: 1, ledger: { event: "attempt_failed", detail: "attempt 1/3 · error: provider timeout → retry_pending", state: "retry_pending", cls: "s-warn" } },
+        { node: "retry", attempt: 2, ledger: { event: "attempt_failed", detail: "attempt 2/3 · error: provider timeout → retry_pending", state: "retry_pending", cls: "s-warn" } },
+        { node: "retry", attempt: 3, ledger: { event: "attempt_failed", detail: "attempt 3/3 · error: provider timeout → dead_letter", state: "dead_letter", cls: "s-bad" } },
+        { node: "dead",   ledger: { event: "workflow_dead_lettered", detail: "attempts: 3 · last_error: provider timeout", state: "dead_letter", cls: "s-bad" } }
+      ]
+    },
+    C: {
+      key: "payment-77", evt: '"payment.requested"', payload: '{"risk_score": 0.9}',
+      route: "→ routes to human_review (risk_score ≥ 0.7)",
+      steps: [
+        { node: "intake" },
+        { node: "pending",  ledger: { event: "workflow_created", detail: "route: human_review · risk threshold", state: "pending_approval", cls: "s-info" } },
+        { node: "rejected", ledger: { event: "workflow_rejected", detail: "reviewer: Lance", state: "rejected", cls: "s-bad" } }
+      ]
+    },
+    D: {
+      key: "email-1094", evt: '"email.received"', payload: '{"needs_interpretation": true}',
+      route: "→ routes to ai_assist (needs_interpretation) — no model is called",
+      steps: [
+        { node: "intake" },
+        { node: "pending",  ledger: { event: "workflow_created", detail: "route: ai_assist · ambiguous input", state: "pending_approval", cls: "s-info" } }
+      ]
+    }
+  };
+
+  // ---- synthetic monotonic clock for realistic timestamps ----
+  var clock = null;
+  function resetClock() { clock = new Date(); }
+  function stamp() {
+    clock = new Date(clock.getTime() + 400 + Math.floor(Math.random() * 700));
+    return clock.toISOString().slice(11, 23); // HH:MM:SS.mmm
+  }
+
+  var allNodeIds = ["intake", "completed", "pending", "rejected", "approved", "retry", "dead"];
+  function nodeEl(id) { return document.querySelector('[data-node="' + id + '"]'); }
+
+  function clearDiagram() {
+    allNodeIds.forEach(function (id) {
+      var el = nodeEl(id);
+      if (el) { el.classList.remove("is-active", "is-visited"); }
+    });
+    $("retryCount").textContent = "–";
+  }
+
+  function delay(ms) { return new Promise(function (r) { setTimeout(r, reduceMotion ? Math.min(ms, 120) : ms); }); }
+
+  // ---- ledger ----
+  function clearLedger() {
+    var body = $("ledgerBody");
+    body.innerHTML = '<tr id="ledgerEmpty"><td colspan="3" class="ledger-empty">No events yet — run a scenario or send a duplicate webhook.</td></tr>';
+  }
+  function addLedgerRow(entry) {
+    var empty = $("ledgerEmpty");
+    if (empty) { empty.parentNode.removeChild(empty); }
+    var tr = document.createElement("tr");
+    tr.className = "rowin";
+    var t = document.createElement("td"); t.className = "t-time"; t.textContent = stamp();
+    var e = document.createElement("td"); e.className = "t-event";
+    var code = document.createElement("code"); code.textContent = entry.event; e.appendChild(code);
+    if (entry.detail) { var d = document.createElement("span"); d.className = "t-detail"; d.textContent = entry.detail; e.appendChild(d); }
+    var s = document.createElement("td");
+    var badge = document.createElement("span"); badge.className = "state-badge " + (entry.cls || ""); badge.textContent = entry.state;
+    s.appendChild(badge);
+    tr.appendChild(t); tr.appendChild(e); tr.appendChild(s);
+    $("ledgerBody").appendChild(tr);
+  }
+
+  // ---- scenario runner ----
+  var running = false;
+  function setBusy(b) {
+    running = b;
+    $("run").disabled = b; $("reset").disabled = b; $("sendTwice").disabled = b;
+    document.querySelectorAll('input[name="scenario"]').forEach(function (i) { i.disabled = b; });
+    $("run").setAttribute("aria-busy", b ? "true" : "false");
+  }
+
+  function selectedScenario() {
+    var checked = document.querySelector('input[name="scenario"]:checked');
+    return checked ? checked.value : "B";
+  }
+
+  async function runDemo() {
+    if (running) { return; }
+    setBusy(true);
+    clearDiagram();
+    clearLedger();
+    resetClock();
+    resetIdem();
+    var sc = scenarios[selectedScenario()];
+    $("status").textContent = "Running scenario…";
+
+    var prev = null;
+    var finalState = null;
+    for (var i = 0; i < sc.steps.length; i++) {
+      var step = sc.steps[i];
+      if (prev) { var pe = nodeEl(prev); if (pe) { pe.classList.remove("is-active"); pe.classList.add("is-visited"); } }
+      var el = nodeEl(step.node);
+      if (el) { el.classList.add("is-active"); }
+      if (step.node === "retry" && step.attempt) { $("retryCount").textContent = String(step.attempt); }
+      if (step.ledger) { addLedgerRow(step.ledger); }
+      finalState = step.ledger ? step.ledger.state : step.node;
+      $("status").textContent = "State: " + finalState;
+      prev = step.node;
+      await delay(step.node === "retry" ? 780 : 900);
+    }
+    // settle terminal node into its final (visited) look
+    var last = nodeEl(prev);
+    if (last) { last.classList.remove("is-active"); last.classList.add("is-visited"); }
+    $("status").textContent = "Scenario complete. Final state: " + finalState + ".";
+    setBusy(false);
+  }
+
+  // ---- idempotency demo ----
+  function resetIdem() {
+    $("http1").className = "http idle"; $("http1").textContent = "—";
+    $("http2").className = "http idle"; $("http2").textContent = "—";
+    $("body1").className = "muted"; $("body1").textContent = "Awaiting send…";
+    $("body2").className = "muted"; $("body2").textContent = "Awaiting send…";
+  }
+
+  function shortId() {
+    var s = "";
+    for (var i = 0; i < 8; i++) { s += "0123456789abcdef"[Math.floor(Math.random() * 16)]; }
+    return "b" + s;
+  }
+
+  async function sendTwice() {
+    if (running) { return; }
+    setBusy(true);
+    resetIdem();
+    resetClock();
+    var wid = "wf_" + shortId();
+    var key = "payment-42";
+
+    // first delivery -> 201 Created, duplicate:false, one workflow created
+    $("http1").className = "http created"; $("http1").textContent = "201 Created";
+    $("body1").className = "";
+    $("body1").innerHTML =
+      '{\n  "id": "' + wid + '",\n  "idempotency_key": "' + key + '",\n  "status": "pending_approval",\n  ' +
+      '"duplicate": <span class="dup-false">false</span>\n}';
+    addLedgerRow({ event: "workflow_created", detail: "key: " + key + " · route: human_review", state: "pending_approval", cls: "s-info" });
+    $("status").textContent = "First delivery: 201 Created, duplicate false.";
+    await delay(950);
+
+    // replay same key -> 200 OK, duplicate:true, no new workflow
+    $("http2").className = "http ok"; $("http2").textContent = "200 OK";
+    $("body2").className = "";
+    $("body2").innerHTML =
+      '{\n  "id": "' + wid + '",  // same workflow\n  "idempotency_key": "' + key + '",\n  "status": "pending_approval",\n  ' +
+      '"duplicate": <span class="dup-true">true</span>\n}';
+    addLedgerRow({ event: "duplicate_received", detail: "key: " + key + " · replay created nothing", state: "pending_approval", cls: "s-info" });
+    $("status").textContent = "Replay: 200 OK, duplicate true — the same workflow, nothing new created.";
+    await delay(200);
+    setBusy(false);
+  }
+
+  // ---- seed preview updates with scenario ----
+  function updateSeed() {
+    var sc = scenarios[selectedScenario()];
+    $("seed-key").textContent = sc.key;
+    $("seed-evt").textContent = sc.evt;
+    $("seed-payload").textContent = sc.payload;
+    $("seed-route").innerHTML = sc.route;
+  }
+
+  function fullReset() {
+    if (running) { return; }
+    clearDiagram();
+    clearLedger();
+    resetIdem();
+    $("status").textContent = "Reset.";
+  }
+
+  // ---- wire up ----
+  document.querySelectorAll('input[name="scenario"]').forEach(function (i) {
+    i.addEventListener("change", updateSeed);
+  });
+  $("run").addEventListener("click", runDemo);
+  $("reset").addEventListener("click", fullReset);
+  $("sendTwice").addEventListener("click", sendTwice);
+  updateSeed();
+})();
+</script>
+</body>
+</html>

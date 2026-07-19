@@ -16,7 +16,13 @@ This is a local `v0.1` vertical slice. It does not call an AI provider yet and i
 - `approve` and `reject` decisions require a named reviewer; deciding a workflow that is not `pending_approval` returns `409`.
 - Approved work can record an execution failure through `POST /workflows/{id}/failure`. Attempts are durable and bounded at three; failures one and two become `retry_pending`, while failure three becomes `dead_letter` and cannot run again.
 - Every creation, duplicate delivery, decision, failed attempt, and dead letter is recorded in SQLite.
-- 28 tests: 9 stdlib tests pin the core ledger, and 19 contract tests pin the HTTP surface including replay, retry, `404`, `409`, and `422` responses.
+- 35 tests: 9 stdlib tests pin the core ledger, 19 contract tests pin the HTTP surface including replay, retry, `404`, `409`, and `422` responses, and 7 static-demo tests keep the public illustration honest, self-contained, and responsive.
+
+## Static demo
+
+Open `docs/index.html` directly in a browser. It is a self-contained, canned walkthrough of safe routing, human approval, idempotent replay, bounded retries, dead letters, and the append-only audit ledger. It does not call the API, a model, or any external asset.
+
+The demo is ready for free GitHub Pages hosting from the `/docs` folder. Pages is not enabled yet; that repository-settings click remains with Lance.
 
 ## Run locally
 
@@ -54,8 +60,8 @@ Keeping the reliability core provider-free and dependency-free is deliberate —
 ## Next slices
 
 - Pluggable AI adapter with recorded prompts/responses and deterministic fallback.
-- Small dashboard for the approval queue and audit timeline.
-- CI and container packaging before any public release.
+- Connect the static demo to the real approval queue only after a deployment target is explicitly approved.
+- Container packaging before a live service release.
 
 ## Portfolio distinction
 
