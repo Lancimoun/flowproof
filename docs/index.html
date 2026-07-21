@@ -585,7 +585,7 @@
 
   <footer>
     FlowProof v0.1 &mdash; local, provider-free vertical slice. This page is a static illustration only; it opens
-    from a plain file with no server. MIT licensed &middot; built by Lance Jilliard Galicia.
+    from a plain file with no server. MIT licensed &middot; built by Architect L..
   </footer>
 </div>
 
@@ -615,7 +615,7 @@
       steps: [
         { node: "intake" },
         { node: "pending",  ledger: { event: "workflow_created", detail: "route: human_review · risk threshold", state: "pending_approval", cls: "s-info" } },
-        { node: "approved", ledger: { event: "workflow_approved", detail: "reviewer: Lance", state: "approved", cls: "s-good" } },
+        { node: "approved", ledger: { event: "workflow_approved", detail: "reviewer: J. Rivera", state: "approved", cls: "s-good" } },
         { node: "retry", attempt: 1, ledger: { event: "attempt_failed", detail: "attempt 1/3 · error: provider timeout → retry_pending", state: "retry_pending", cls: "s-warn" } },
         { node: "retry", attempt: 2, ledger: { event: "attempt_failed", detail: "attempt 2/3 · error: provider timeout → retry_pending", state: "retry_pending", cls: "s-warn" } },
         { node: "retry", attempt: 3, ledger: { event: "attempt_failed", detail: "attempt 3/3 · error: provider timeout → dead_letter", state: "dead_letter", cls: "s-bad" } },
@@ -628,7 +628,7 @@
       steps: [
         { node: "intake" },
         { node: "pending",  ledger: { event: "workflow_created", detail: "route: human_review · risk threshold", state: "pending_approval", cls: "s-info" } },
-        { node: "rejected", ledger: { event: "workflow_rejected", detail: "reviewer: Lance", state: "rejected", cls: "s-bad" } }
+        { node: "rejected", ledger: { event: "workflow_rejected", detail: "reviewer: J. Rivera", state: "rejected", cls: "s-bad" } }
       ]
     },
     D: {
