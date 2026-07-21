@@ -22,7 +22,7 @@ This is a local `v0.1` vertical slice. It does not call an AI provider yet and i
 
 Open `docs/index.html` directly in a browser. It is a self-contained, canned walkthrough of safe routing, human approval, idempotent replay, bounded retries, dead letters, and the append-only audit ledger. It does not call the API, a model, or any external asset.
 
-The demo is ready for free GitHub Pages hosting from the `/docs` folder. Pages is not enabled yet; that repository-settings click remains with Lance.
+**▶ Live demo:** [lancimoun.github.io/flowproof/](https://lancimoun.github.io/flowproof/) — served free from GitHub Pages out of the `/docs` folder, no backend and no external assets.
 
 ## Run locally
 
@@ -67,4 +67,4 @@ Keeping the reliability core provider-free and dependency-free is deliberate —
 
 Agent Reliability Arena evaluates model behavior. FlowProof evaluates the workflow around a model: delivery, routing, approvals, retries, and traceability.
 
-MIT licensed. Built by Lance Jilliard Galicia.
+MIT licensed. Built by [Architect L.](https://github.com/Lancimoun) with Claude Code.
