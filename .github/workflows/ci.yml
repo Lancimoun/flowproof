@@ -3,6 +3,10 @@ name: FlowProof CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   core-runs-with-nothing-installed:
@@ -13,8 +17,8 @@ jobs:
     # stop importing and this job goes red. That is the point of the job.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -28,12 +32,12 @@ jobs:
         run: python -m unittest discover tests -v
 
   full-suite:
-    # The same 35 tests with dependencies present: 9 core + 19 live HTTP
-    # contract tests against the FastAPI adapter + 7 static-demo checks.
+    # The same 38 tests with dependencies present: 9 core + 20 live HTTP
+    # contract tests against the FastAPI adapter + 9 static/release checks.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -41,4 +45,4 @@ jobs:
         run: pip install -r requirements-dev.txt
 
       - name: Core + HTTP contract suite
-        run: python -m unittest discover tests -v
+        run: python run_tests.py

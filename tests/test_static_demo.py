@@ -2,11 +2,25 @@
 
 from pathlib import Path
 import re
+import struct
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DEMO = ROOT / "docs" / "index.html"
+CARD = ROOT / "docs" / "flowproof-social-card.png"
+README = ROOT / "README.md"
+WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+RUNNER = ROOT / "run_tests.py"
+DEV_REQUIREMENTS = ROOT / "requirements-dev.txt"
+
+CARD_URL = "https://lancimoun.github.io/flowproof/flowproof-social-card.png"
+CARD_ALT = (
+    "Static FlowProof illustration: duplicate webhooks converge into one workflow, "
+    "a deterministic switch sends risk to a human approval gate, three bounded "
+    "failure markers end at dead letter, and each transition appends a tile to "
+    "the audit track."
+)
 
 
 class StaticDemoContract(unittest.TestCase):
@@ -18,7 +32,10 @@ class StaticDemoContract(unittest.TestCase):
         self.assertIn("not a live product", self.html)
         self.assertRegex(self.html, r"No backend\s+(?:is running|runs)")
         self.assertNotRegex(self.html, r"<(?:script|img)[^>]+\bsrc\s*=")
-        self.assertNotRegex(self.html, r"<link[^>]+\bhref\s*=")
+        self.assertNotRegex(
+            self.html,
+            r'<link[^>]+\brel="(?:stylesheet|preload|modulepreload)"',
+        )
         self.assertNotRegex(
             self.html, r"\b(?:fetch|XMLHttpRequest|WebSocket)\s*\("
         )
@@ -69,6 +86,45 @@ class StaticDemoContract(unittest.TestCase):
         self.assertIn(
             '"Scenario complete. Final state: " + finalState + "."', self.html
         )
+
+    def test_social_card_is_real_sized_and_propagated_to_every_surface(self) -> None:
+        data = CARD.read_bytes()
+        self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(struct.unpack(">II", data[16:24]), (1200, 630))
+        self.assertGreater(len(data), 100_000)
+        self.assertLess(len(data), 2_000_000)
+
+        for declaration in (
+            '<link rel="canonical" href="https://lancimoun.github.io/flowproof/" />',
+            f'<meta property="og:image" content="{CARD_URL}" />',
+            '<meta property="og:image:type" content="image/png" />',
+            '<meta property="og:image:width" content="1200" />',
+            '<meta property="og:image:height" content="630" />',
+            f'<meta property="og:image:alt" content="{CARD_ALT}" />',
+            '<meta name="twitter:card" content="summary_large_image" />',
+            f'<meta name="twitter:image" content="{CARD_URL}" />',
+            f'<meta name="twitter:image:alt" content="{CARD_ALT}" />',
+        ):
+            self.assertIn(declaration, self.html)
+
+        readme = README.read_text(encoding="utf-8")
+        self.assertIn(f"![{CARD_ALT}](docs/flowproof-social-card.png)", readme)
+
+    def test_ci_release_contract_is_supported_recoverable_and_warning_fatal(
+        self,
+    ) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        runner = RUNNER.read_text(encoding="utf-8")
+        requirements = DEV_REQUIREMENTS.read_text(encoding="utf-8")
+
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("actions/checkout@v5", workflow)
+        self.assertIn("actions/setup-python@v6", workflow)
+        self.assertIn("python run_tests.py", workflow)
+        self.assertIn("StarletteDeprecationWarning", runner)
+        self.assertIn('warnings.filterwarnings("error"', runner)
+        self.assertRegex(requirements, r"(?m)^httpx2>=2\.7,<3$")
+        self.assertNotRegex(requirements, r"(?m)^httpx(?:[<=>].*)?$")
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ the dependency-free core run.
 import os
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
 
 _TEMPDIR = tempfile.TemporaryDirectory()
@@ -31,7 +32,7 @@ def tearDownModule() -> None:
     _TEMPDIR.cleanup()
 
 
-@unittest.skipIf(client is None, "fastapi/httpx not installed")
+@unittest.skipIf(client is None, "fastapi/httpx2 not installed")
 class HealthContractTests(unittest.TestCase):
     def test_health_reports_ok_and_version(self) -> None:
         response = client.get("/health")
@@ -39,7 +40,24 @@ class HealthContractTests(unittest.TestCase):
         self.assertEqual(response.json(), {"status": "ok", "version": "0.1.0"})
 
 
-@unittest.skipIf(client is None, "fastapi/httpx not installed")
+@unittest.skipIf(client is None, "fastapi/httpx2 not installed")
+class WarningPolicyContractTests(unittest.TestCase):
+    def test_starlette_warning_policy_is_applied_after_import_and_can_fail(
+        self,
+    ) -> None:
+        from run_tests import configure_warning_policy
+        from starlette.exceptions import StarletteDeprecationWarning
+
+        original_filters = warnings.filters[:]
+        try:
+            configure_warning_policy()
+            with self.assertRaises(StarletteDeprecationWarning):
+                warnings.warn("contract probe", StarletteDeprecationWarning)
+        finally:
+            warnings.filters[:] = original_filters
+
+
+@unittest.skipIf(client is None, "fastapi/httpx2 not installed")
 class WebhookContractTests(unittest.TestCase):
     def test_new_delivery_returns_201_created(self) -> None:
         response = client.post(
@@ -98,7 +116,7 @@ class WebhookContractTests(unittest.TestCase):
         self.assertEqual(response.json()["status"], "pending_approval")
 
 
-@unittest.skipIf(client is None, "fastapi/httpx not installed")
+@unittest.skipIf(client is None, "fastapi/httpx2 not installed")
 class WorkflowReadContractTests(unittest.TestCase):
     def test_known_workflow_exposes_audit_history(self) -> None:
         created = client.post(
@@ -120,7 +138,7 @@ class WorkflowReadContractTests(unittest.TestCase):
         self.assertEqual(response.json()["detail"], "workflow not found")
 
 
-@unittest.skipIf(client is None, "fastapi/httpx not installed")
+@unittest.skipIf(client is None, "fastapi/httpx2 not installed")
 class DecisionContractTests(unittest.TestCase):
     def _pending_workflow_id(self, key: str) -> str:
         return client.post(
@@ -178,7 +196,7 @@ class DecisionContractTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
 
 
-@unittest.skipIf(client is None, "fastapi/httpx not installed")
+@unittest.skipIf(client is None, "fastapi/httpx2 not installed")
 class RetryContractTests(unittest.TestCase):
     def _approved_workflow_id(self, key: str) -> str:
         workflow_id = client.post(

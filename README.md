@@ -20,6 +20,8 @@ Makes the operational guarantees around an automation <em>visible</em>: duplicat
   <a href="#verify">Verify</a>
 </p>
 
+![Static FlowProof illustration: duplicate webhooks converge into one workflow, a deterministic switch sends risk to a human approval gate, three bounded failure markers end at dead letter, and each transition appends a tile to the audit track.](docs/flowproof-social-card.png)
+
 ---
 
 ## What it is
@@ -73,9 +75,9 @@ curl -X POST http://127.0.0.1:8000/webhooks \
 python -m unittest discover tests -v
 ```
 
-**35 tests:** 9 stdlib tests pin the core ledger, 19 contract tests pin the HTTP surface (replay, retry, `404`, `409`, `422`), and 7 static-demo tests keep the public illustration honest, self-contained, and responsive.
+**38 tests:** 9 stdlib tests pin the core ledger, 20 contract tests pin the HTTP surface and warning policy (replay, retry, `404`, `409`, `422`), and 9 static/release tests keep the public illustration, social card, and CI contract honest, self-contained, recoverable, and responsive.
 
-The reliability core is **provider-free and stdlib-only by design** — so that command needs no install: the 9 core tests run and the 19 API tests report as skipped. Run it from the virtualenv to exercise the HTTP surface too. The guarantees stay testable offline, and the FastAPI and future AI adapters sit thinly around them.
+The reliability core is **provider-free and stdlib-only by design** — so that command needs no install: the 9 core tests and 9 static/release tests run while the 20 API tests report as skipped. Run `python run_tests.py` from the virtualenv to exercise the HTTP surface under FlowProof's fatal Starlette-warning policy. The guarantees stay testable offline, and the FastAPI and future AI adapters sit thinly around them.
 
 ## Next slices
 
