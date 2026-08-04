@@ -117,7 +117,7 @@ curl -X POST http://127.0.0.1:8000/webhooks \
 python -m unittest discover tests -v
 ```
 
-**38 tests:** 9 stdlib tests pin the core ledger, 20 contract tests pin the HTTP surface and warning policy (replay, retry, `404`, `409`, `422`), and 9 static/release tests keep the public illustration, social card, and CI contract honest, self-contained, recoverable, and responsive.
+**42 tests:** 9 stdlib tests pin the core ledger, 4 run the README's own example and compare the documentation against its real output, 20 contract tests pin the HTTP surface and warning policy (replay, retry, `404`, `409`, `422`), and 9 static/release tests keep the public illustration, social card, and CI contract honest, self-contained, recoverable, and responsive.
 
 The reliability core is **provider-free and stdlib-only by design** — so that command needs no install: the 9 core tests and 9 static/release tests run while the 20 API tests report as skipped. Run `python run_tests.py` from the virtualenv to exercise the HTTP surface under FlowProof's fatal Starlette-warning policy. The guarantees stay testable offline, and the FastAPI and future AI adapters sit thinly around them.
 
