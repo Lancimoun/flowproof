@@ -26,14 +26,17 @@ jobs:
         # Named explicitly rather than via discover: discover would report
         # success if every test silently started skipping, which is exactly the
         # regression this job exists to catch.
-        run: python -m unittest tests.test_workflows -v
+        run: python -m unittest tests.test_workflows tests.test_readme_example -v
 
       - name: Full discover -- HTTP contracts must SKIP, not fail
         run: python -m unittest discover tests -v
 
   full-suite:
-    # The same 38 tests with dependencies present: 9 core + 20 live HTTP
-    # contract tests against the FastAPI adapter + 9 static/release checks.
+    # The same 42 tests with dependencies present: 9 core + 4 README-example
+    # + 20 live HTTP contract tests against the FastAPI adapter + 9
+    # static/release checks. The README example runs on the BARE
+    # interpreter too -- it documents the provider-free core, so it must
+    # prove itself without the provider dependencies installed.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
