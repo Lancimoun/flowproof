@@ -48,6 +48,48 @@ This is a local `v0.1` vertical slice. It does not call an AI provider yet and i
 | `POST` | `/workflows/{id}/decision` | Named-reviewer approve / reject |
 | `POST` | `/workflows/{id}/failure` | Record a failed attempt (bounded → `dead_letter`) |
 
+## Using the core as a library
+
+The HTTP table above is the service contract. Underneath it is `flowproof.core`,
+which holds every rule and the ledger and depends on **no provider, no network and
+no credentials** — that is what "provider-free" means here, and it is testable
+without running the API at all.
+
+```python
+from flowproof.core import InvalidTransition, WorkflowStore
+
+store = WorkflowStore(database=":memory:", max_attempts=3)
+store.ingest("evt-1", "payout.requested", {"amount": 5000})  # -> pending_approval
+```
+
+The checked-in example is executable and CI runs it on every push:
+
+```bash
+python -m examples.ledger_demo
+```
+
+```text
+safe event    : status=completed  route=rules
+replayed      : duplicate=True  same_id=True
+risky event   : status=pending_approval  route=human_review
+decided       : status=approved
+decided twice : refused -> InvalidTransition
+ambiguous     : status=pending_approval  route=ai_assist
+failure 1     : status=retry_pending
+failure 2     : status=retry_pending
+failure 3     : status=dead_letter
+audit trail   : 6 entries, oldest=workflow_created
+```
+
+Note what routing reads: **the payload, not the event name**. `refund.requested`
+for 40 completes through rules; `payout.requested` for 5000 crosses the amount
+threshold and waits for a named human. `needs_interpretation` routes to `ai_assist`
+and also waits — **without contacting a model**, which is the safety boundary a
+future adapter has to slot behind rather than around.
+
+A test re-runs this file and asserts the block above matches its real output, so
+the documentation cannot drift from the code while still looking correct.
+
 ## Live demo
 
 **▶ [lancimoun.github.io/flowproof/](https://lancimoun.github.io/flowproof/)** — a self-contained walkthrough of safe routing, human approval, idempotent replay, bounded retries, dead letters, and the audit ledger. Served free from GitHub Pages out of `/docs`, with no backend and no external assets. Open `docs/index.html` locally for the same thing offline.
